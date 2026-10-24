@@ -39,6 +39,9 @@ tfoot td{font-weight:700;background:var(--soft)}
 .marquee .run{display:inline-block;padding-left:100%;font-weight:800;font-size:15px;letter-spacing:.2em;color:#000;animation:run 6s linear infinite}
 .marquee .run b{font-weight:800;color:#dc2626}
 @keyframes run{to{transform:translateX(-100%)}}
+.tight th,.tight td{padding:6px 3px;font-size:11.5px}
+.tight th:first-child,.tight td:first-child{padding-left:6px;white-space:nowrap}
+.tight td.z{color:var(--mute)}
 .msg{padding:24px;text-align:center;color:var(--mute)}
 @media print{body{background:#fff}.noprint{display:none!important}}
 </style>
@@ -65,6 +68,12 @@ tfoot td{font-weight:700;background:var(--soft)}
     <p>Avg/day = JOs ÷ days with verified JOs in that month.</p>
     <div class="scroll"><table id="tMonth"></table></div>
   </section>
+
+  <section class="card">
+    <h2 id="dayTitle">Per Day</h2>
+    <p>JOs verified per day this month. Avg/day = total ÷ days the name had verified JOs.</p>
+    <div class="scroll"><table id="tDay" class="tight"></table></div>
+  </section>
 </div>
 
 <script>
@@ -74,6 +83,7 @@ const EXPORT_URL=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?form
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nf=n=>n.toLocaleString('en-US');
+const MNF=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let rows=[], lastText=null;
 
@@ -164,6 +174,23 @@ function render(){
   $('tMonth').innerHTML='<thead><tr><th>Month</th><th class="n">JO</th><th class="n">% of total</th><th class="n">Days</th><th class="n">Avg/day</th><th style="width:30%"></th></tr></thead><tbody>'+
     months.map(m=>`<tr><td>${monthLabel(m)}</td><td class="n">${nf(mt[m])}</td><td class="n">${(mt[m]/total*100).toFixed(1)}%</td><td class="n">${md[m].size}</td><td class="n">${nf(Math.round(mt[m]/md[m].size))}</td><td><div class="bar"><i style="width:${mt[m]/maxM*100}%"></i></div></td></tr>`).join('')+
     `</tbody><tfoot><tr><td>Total</td><td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(nd)}</td><td class="n">${nf(Math.round(avgDay))}</td><td>Avg/month: ${nf(Math.round(avg))}</td></tr></tfoot>`;
+
+  /* per day (current month) */
+  const now=new Date(), curKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const cm=mt[curKey]?curKey:months[months.length-1];
+  if(cm){
+    const [cy,cmo]=cm.split('-').map(Number), dim=new Date(cy,cmo,0).getDate();
+    $('dayTitle').textContent=`Per Day — ${MNF[cmo-1]} ${cy}`;
+    const mr=rows.filter(r=>r.mk===cm), mtot=mr.length;
+    const pn={};mr.forEach(r=>{const o=pn[r.partner]??={p:r.partner,t:0,d:{}};o.t++;o.d[r.d.d]=(o.d[r.d.d]||0)+1;});
+    const pl=Object.values(pn).sort((a,b)=>b.t-a.t);
+    const dt={};mr.forEach(r=>dt[r.d.d]=(dt[r.d.d]||0)+1);
+    const dnums=Array.from({length:dim},(_,i)=>i+1), ad=Object.keys(dt).length||1;
+    $('tDay').innerHTML='<thead><tr><th>Name</th>'+dnums.map(d=>`<th class="n">${d}</th>`).join('')+
+      '<th class="n">Total JO</th><th class="n">Contrib.</th><th class="n">Avg/day</th></tr></thead><tbody>'+
+      pl.map(o=>`<tr><td>${esc(o.p)}</td>${dnums.map(d=>o.d[d]?`<td class="n">${nf(o.d[d])}</td>`:'<td class="n z">–</td>').join('')}<td class="n"><b>${nf(o.t)}</b></td><td class="n">${(o.t/mtot*100).toFixed(1)}%</td><td class="n">${nf(Math.round(o.t/Object.keys(o.d).length))}</td></tr>`).join('')+
+      `</tbody><tfoot><tr><td>Total</td>${dnums.map(d=>dt[d]?`<td class="n">${nf(dt[d])}</td>`:'<td class="n z">–</td>').join('')}<td class="n">${nf(mtot)}</td><td class="n">100%</td><td class="n">${nf(Math.round(mtot/ad))}</td></tr></tfoot>`;
+  }
 }
 
 /* ---- load / auto-update ---- */
