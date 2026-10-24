@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="fil">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accomplishment Report</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1a1f2b;--mute:#667085;--line:#e4e7ec;--accent:#2f5bea;--soft:#f0f3fa}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1217;--card:#181c24;--ink:#e8ebf1;--mute:#98a2b3;--line:#2a303b;--accent:#7c9bff;--soft:#1f2530}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1320px;margin:0 auto;padding:20px 16px 50px}
+header{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
+h1{font-size:22px;margin:0 0 3px}
+.sub,.live{color:var(--mute);font-size:13px}
+.live{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dot{width:9px;height:9px;border-radius:50%;background:#16a34a}
+.dot.err{background:#dc2626}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kpi,.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .l{font-size:11.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.kpi .v{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--mute)}
+.card{margin-bottom:16px}
+.card h2{font-size:15px;margin:0 0 2px}
+.card p{margin:0 0 10px;color:var(--mute);font-size:12.5px}
+.scroll{overflow:auto}
+table{width:100%;border-collapse:collapse;table-layout:auto}
+th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
+th{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;background:var(--soft)}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+tfoot td{font-weight:700;background:var(--soft)}
+.bar{height:8px;background:var(--soft);border-radius:99px;min-width:80px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.marquee{overflow:hidden;white-space:nowrap;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 0;width:100%;margin:0}
+.right{display:flex;flex-direction:column;gap:10px;align-items:stretch}
+.right .live{justify-content:flex-end}
+.marquee .run{display:inline-block;padding-left:100%;font-weight:800;font-size:15px;letter-spacing:.2em;color:#000;animation:run 6s linear infinite}
+.marquee .run b{font-weight:800;color:#dc2626}
+@keyframes run{to{transform:translateX(-100%)}}
+.msg{padding:24px;text-align:center;color:var(--mute)}
+@media print{body{background:#fff}.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Accomplishment Report</h1><div class="sub" id="sub">Naglo-load…</div></div>
+    <div class="right"><div class="marquee" aria-label="JAISON"><span class="run">J<b>AI</b>SON</span></div>
+    <div class="live noprint"><span class="dot" id="dot"></span><span id="liveTxt">Auto sync data from google sheet</span>
+      <button id="btnRefresh" type="button">Refresh</button><button id="btnPrint" type="button">Print / PDF</button></div></div>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="card">
+    <h2>Per Name</h2>
+    <p>Contribution = bahagi ng bawat name sa kabuuang JO. Avg/buwan = total ÷ buwan na may data. Avg/araw = total ÷ araw na may na-verify ang name.</p>
+    <div class="scroll"><table id="tPartner"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Per Month</h2>
+    <p>Avg/araw = JO ÷ araw na may na-verify sa buwan na iyon.</p>
+    <div class="scroll"><table id="tMonth"></table></div>
+  </section>
+</div>
+
+<script>
+const SHEET_ID='11UGjDTpKPjJtrlUw-paMuhaY27aGIkleF-HrMLL8N1M', GID='0', REFRESH_MS=30000;
+const CSV_URL=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
+const EXPORT_URL=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf=n=>n.toLocaleString('en-US');
+const MN=['Jan','Peb','Mar','Abr','May','Hun','Hul','Ago','Set','Okt','Nob','Dis'];
+let rows=[], lastText=null;
+
+/* ---- fetch (may fallback na walang CORS) ---- */
+async function tryFetch(url){
+  const r=await fetch(url+(url.includes('?')?'&':'?')+'_='+Date.now(),{cache:'no-store'});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const t=await r.text();
+  if(/<html/i.test(t.slice(0,300))) throw new Error('Hindi public ang sheet');
+  return t;
+}
+function jsonp(){return new Promise((res,rej)=>{
+  const cb='__gs'+Date.now(), s=document.createElement('script');
+  const done=()=>{delete window[cb];s.remove();};
+  window[cb]=r=>{done();res(r);};
+  s.onerror=()=>{done();rej(new Error('Hindi ma-abot ang Google Sheet'));};
+  s.src=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${GID}&tqx=out:json;responseHandler:${cb}&_=${Date.now()}`;
+  document.head.appendChild(s);
+  setTimeout(()=>{if(window[cb]){done();rej(new Error('Timeout'));}},20000);
+});}
+function jsonToCSV(r){
+  if(!r||r.status==='error') throw new Error('Hindi public ang sheet');
+  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const cell=c=>{if(!c)return'';if(c.f!=null)return c.f;if(c.v==null)return'';
+    const m=typeof c.v==='string'&&c.v.match(/^Date\((\d+),(\d+),(\d+)/);return m?`${+m[2]+1}/${m[3]}/${m[1]}`:c.v;};
+  return [r.table.cols.map(c=>q(c.label)).join(',')].concat(r.table.rows.map(w=>w.c.map(c=>q(cell(c))).join(','))).join('\n');
+}
+async function getSheetText(){
+  for(const u of [CSV_URL,EXPORT_URL]){try{return await tryFetch(u);}catch(e){}}
+  return jsonToCSV(await jsonp());
+}
+
+/* ---- parse ---- */
+function parseCSV(t){
+  const out=[];let r=[],c='',q=false;
+  for(let i=0;i<t.length;i++){const ch=t[i];
+    if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}
+    else if(ch==='"')q=true;
+    else if(ch===','){r.push(c);c='';}
+    else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&t[i+1]==='\n')i++;r.push(c);c='';out.push(r);r=[];}
+    else c+=ch;}
+  if(c!==''||r.length){r.push(c);out.push(r);}
+  return out.filter(x=>x.some(v=>v.trim()!==''));
+}
+function parseDate(s){s=(s||'').trim();let m;
+  if((m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)))return{y:+m[3],m:+m[1]-1,d:+m[2]};
+  if((m=s.match(/^(\d{4})-(\d{2})-(\d{2})/)))return{y:+m[1],m:+m[2]-1,d:+m[3]};
+  return null;}
+function toRows(text){
+  const t=parseCSV(text);if(!t.length)return[];
+  const h=t[0].map(x=>x.trim().toLowerCase());
+  const iD=h.findIndex(x=>x.includes('date')),iP=h.findIndex(x=>x==='name'),iJ=h.findIndex(x=>x.includes('jo'));
+  return t.slice(1).map(r=>{const d=parseDate(r[iD]);
+    return{dk:d?`${d.y}-${d.m}-${d.d}`:'',mk:d?`${d.y}-${String(d.m+1).padStart(2,'0')}`:'',partner:(r[iP]||'').trim()||'(walang name)',jo:(r[iJ]||'').trim(),d};
+  }).filter(x=>x.jo&&x.mk);
+}
+const monthLabel=k=>{const[y,m]=k.split('-');return`${MN[+m-1]} ${y}`;};
+
+/* ---- render ---- */
+function render(){
+  const total=rows.length;
+  const months=[...new Set(rows.map(r=>r.mk))].sort();
+  const nm=months.length||1, avg=total/nm;
+  const allDays=new Set(rows.map(r=>r.dk)), nd=allDays.size||1, avgDay=total/nd;
+  const sameYear=new Set(months.map(m=>m.slice(0,4))).size<=1;
+  const mlab=m=>sameYear?MN[+m.slice(5)-1]:monthLabel(m);
+  const partners={};
+  rows.forEach(r=>{const p=partners[r.partner]??={p:r.partner,t:0,m:{},days:new Set()};p.t++;p.m[r.mk]=(p.m[r.mk]||0)+1;p.days.add(r.dk);});
+  const plist=Object.values(partners).sort((a,b)=>b.t-a.t);
+  const mt={},md={};rows.forEach(r=>{mt[r.mk]=(mt[r.mk]||0)+1;(md[r.mk]??=new Set()).add(r.dk);});
+
+  $('sub').textContent=months.length?`${monthLabel(months[0])} – ${monthLabel(months[months.length-1])}`:'Walang data';
+  const k=(l,v,s)=>`<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  $('kpis').innerHTML=
+    k('Kabuuang JO',nf(total),`${nf(plist.length)} tao`)+
+    k('Average JO / buwan',nf(Math.round(avg)),`sa ${nm} buwan na may data`)+
+    k('Average JO / araw',nf(Math.round(avgDay)),`sa ${nf(nd)} araw na may data`)+
+    k('Pinakamataas na buwan',months.length?nf(Math.max(...Object.values(mt))):'—',months.length?monthLabel(months.reduce((a,b)=>mt[a]>=mt[b]?a:b)):'');
+
+  /* per name */
+  $('tPartner').innerHTML='<thead><tr><th>Name</th>'+months.map(m=>`<th class="n">${mlab(m)}</th>`).join('')+
+    '<th class="n">Total JO</th><th class="n">Contrib.</th><th class="n">Avg/buwan</th><th class="n">Avg/araw</th></tr></thead><tbody>'+
+    plist.map(o=>`<tr><td>${esc(o.p)}</td>${months.map(m=>`<td class="n">${o.m[m]?nf(o.m[m]):'–'}</td>`).join('')}<td class="n"><b>${nf(o.t)}</b></td><td class="n">${(o.t/total*100).toFixed(1)}%</td><td class="n">${nf(Math.round(o.t/nm))}</td><td class="n">${nf(Math.round(o.t/o.days.size))}</td></tr>`).join('')+
+    `</tbody><tfoot><tr><td>Kabuuan</td>${months.map(m=>`<td class="n">${nf(mt[m])}</td>`).join('')}<td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(Math.round(avg))}</td><td class="n">${nf(Math.round(avgDay))}</td></tr></tfoot>`;
+
+  /* per month */
+  const maxM=Math.max(1,...Object.values(mt));
+  $('tMonth').innerHTML='<thead><tr><th>Buwan</th><th class="n">JO</th><th class="n">% ng total</th><th class="n">Araw</th><th class="n">Avg/araw</th><th style="width:30%"></th></tr></thead><tbody>'+
+    months.map(m=>`<tr><td>${monthLabel(m)}</td><td class="n">${nf(mt[m])}</td><td class="n">${(mt[m]/total*100).toFixed(1)}%</td><td class="n">${md[m].size}</td><td class="n">${nf(Math.round(mt[m]/md[m].size))}</td><td><div class="bar"><i style="width:${mt[m]/maxM*100}%"></i></div></td></tr>`).join('')+
+    `</tbody><tfoot><tr><td>Kabuuan</td><td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(nd)}</td><td class="n">${nf(Math.round(avgDay))}</td><td>Avg/buwan: ${nf(Math.round(avg))}</td></tr></tfoot>`;
+}
+
+/* ---- load / auto-update ---- */
+async function load(){
+  try{
+    const text=await getSheetText(), now=new Date().toLocaleTimeString('en-PH');
+    if(text!==lastText){const first=lastText===null;lastText=text;rows=toRows(text);render();
+      $('liveTxt').textContent='Auto sync data from google sheet';}
+    else $('liveTxt').textContent='Auto sync data from google sheet';
+    $('dot').classList.remove('err');
+  }catch(e){
+    $('dot').classList.add('err');
+    $('liveTxt').textContent='Hindi ma-load: '+e.message;
+    if(!rows.length)$('kpis').innerHTML='<div class="msg" style="grid-column:1/-1">Walang data na na-load.</div>';
+  }
+}
+$('btnRefresh').onclick=load;$('btnPrint').onclick=()=>window.print();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
+load();setInterval(load,REFRESH_MS);
+</script>
+</body>
+</html>
