@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fil">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -46,7 +46,7 @@ tfoot td{font-weight:700;background:var(--soft)}
 <body>
 <div class="wrap">
   <header>
-    <div><h1>Accomplishment Report</h1><div class="sub" id="sub">Naglo-load…</div></div>
+    <div><h1>Accomplishment Report</h1><div class="sub" id="sub">Loading…</div></div>
     <div class="right"><div class="marquee" aria-label="JAISON"><span class="run">J<b>AI</b>SON</span></div>
     <div class="live noprint"><span class="dot" id="dot"></span><span id="liveTxt">Auto sync data from google sheet</span>
       <button id="btnRefresh" type="button">Refresh</button><button id="btnPrint" type="button">Print / PDF</button></div></div>
@@ -56,13 +56,13 @@ tfoot td{font-weight:700;background:var(--soft)}
 
   <section class="card">
     <h2>Per Name</h2>
-    <p>Contribution = bahagi ng bawat name sa kabuuang JO. Avg/buwan = total ÷ buwan na may data. Avg/araw = total ÷ araw na may na-verify ang name.</p>
+    <p>Contribution = each name's share of total JOs. Avg/month = total ÷ months with data. Avg/day = total ÷ days the name had verified JOs.</p>
     <div class="scroll"><table id="tPartner"></table></div>
   </section>
 
   <section class="card">
     <h2>Per Month</h2>
-    <p>Avg/araw = JO ÷ araw na may na-verify sa buwan na iyon.</p>
+    <p>Avg/day = JOs ÷ days with verified JOs in that month.</p>
     <div class="scroll"><table id="tMonth"></table></div>
   </section>
 </div>
@@ -74,28 +74,28 @@ const EXPORT_URL=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?form
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nf=n=>n.toLocaleString('en-US');
-const MN=['Jan','Peb','Mar','Abr','May','Hun','Hul','Ago','Set','Okt','Nob','Dis'];
+const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let rows=[], lastText=null;
 
-/* ---- fetch (may fallback na walang CORS) ---- */
+/* ---- fetch (with a no-CORS fallback) ---- */
 async function tryFetch(url){
   const r=await fetch(url+(url.includes('?')?'&':'?')+'_='+Date.now(),{cache:'no-store'});
   if(!r.ok) throw new Error('HTTP '+r.status);
   const t=await r.text();
-  if(/<html/i.test(t.slice(0,300))) throw new Error('Hindi public ang sheet');
+  if(/<html/i.test(t.slice(0,300))) throw new Error('Sheet is not public');
   return t;
 }
 function jsonp(){return new Promise((res,rej)=>{
   const cb='__gs'+Date.now(), s=document.createElement('script');
   const done=()=>{delete window[cb];s.remove();};
   window[cb]=r=>{done();res(r);};
-  s.onerror=()=>{done();rej(new Error('Hindi ma-abot ang Google Sheet'));};
+  s.onerror=()=>{done();rej(new Error('Cannot reach Google Sheet'));};
   s.src=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${GID}&tqx=out:json;responseHandler:${cb}&_=${Date.now()}`;
   document.head.appendChild(s);
   setTimeout(()=>{if(window[cb]){done();rej(new Error('Timeout'));}},20000);
 });}
 function jsonToCSV(r){
-  if(!r||r.status==='error') throw new Error('Hindi public ang sheet');
+  if(!r||r.status==='error') throw new Error('Sheet is not public');
   const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
   const cell=c=>{if(!c)return'';if(c.f!=null)return c.f;if(c.v==null)return'';
     const m=typeof c.v==='string'&&c.v.match(/^Date\((\d+),(\d+),(\d+)/);return m?`${+m[2]+1}/${m[3]}/${m[1]}`:c.v;};
@@ -127,7 +127,7 @@ function toRows(text){
   const h=t[0].map(x=>x.trim().toLowerCase());
   const iD=h.findIndex(x=>x.includes('date')),iP=h.findIndex(x=>x==='name'),iJ=h.findIndex(x=>x.includes('jo'));
   return t.slice(1).map(r=>{const d=parseDate(r[iD]);
-    return{dk:d?`${d.y}-${d.m}-${d.d}`:'',mk:d?`${d.y}-${String(d.m+1).padStart(2,'0')}`:'',partner:(r[iP]||'').trim()||'(walang name)',jo:(r[iJ]||'').trim(),d};
+    return{dk:d?`${d.y}-${d.m}-${d.d}`:'',mk:d?`${d.y}-${String(d.m+1).padStart(2,'0')}`:'',partner:(r[iP]||'').trim()||'(no name)',jo:(r[iJ]||'').trim(),d};
   }).filter(x=>x.jo&&x.mk);
 }
 const monthLabel=k=>{const[y,m]=k.split('-');return`${MN[+m-1]} ${y}`;};
@@ -145,25 +145,25 @@ function render(){
   const plist=Object.values(partners).sort((a,b)=>b.t-a.t);
   const mt={},md={};rows.forEach(r=>{mt[r.mk]=(mt[r.mk]||0)+1;(md[r.mk]??=new Set()).add(r.dk);});
 
-  $('sub').textContent=months.length?`${monthLabel(months[0])} – ${monthLabel(months[months.length-1])}`:'Walang data';
+  $('sub').textContent=months.length?`${monthLabel(months[0])} – ${monthLabel(months[months.length-1])}`:'No data';
   const k=(l,v,s)=>`<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   $('kpis').innerHTML=
-    k('Kabuuang JO',nf(total),`${nf(plist.length)} tao`)+
-    k('Average JO / buwan',nf(Math.round(avg)),`sa ${nm} buwan na may data`)+
-    k('Average JO / araw',nf(Math.round(avgDay)),`sa ${nf(nd)} araw na may data`)+
-    k('Pinakamataas na buwan',months.length?nf(Math.max(...Object.values(mt))):'—',months.length?monthLabel(months.reduce((a,b)=>mt[a]>=mt[b]?a:b)):'');
+    k('Total JOs',nf(total),`${nf(plist.length)} people`)+
+    k('Average JO / month',nf(Math.round(avg)),`over ${nm} months with data`)+
+    k('Average JO / day',nf(Math.round(avgDay)),`over ${nf(nd)} days with data`)+
+    k('Highest month',months.length?nf(Math.max(...Object.values(mt))):'—',months.length?monthLabel(months.reduce((a,b)=>mt[a]>=mt[b]?a:b)):'');
 
   /* per name */
   $('tPartner').innerHTML='<thead><tr><th>Name</th>'+months.map(m=>`<th class="n">${mlab(m)}</th>`).join('')+
-    '<th class="n">Total JO</th><th class="n">Contrib.</th><th class="n">Avg/buwan</th><th class="n">Avg/araw</th></tr></thead><tbody>'+
+    '<th class="n">Total JO</th><th class="n">Contrib.</th><th class="n">Avg/month</th><th class="n">Avg/day</th></tr></thead><tbody>'+
     plist.map(o=>`<tr><td>${esc(o.p)}</td>${months.map(m=>`<td class="n">${o.m[m]?nf(o.m[m]):'–'}</td>`).join('')}<td class="n"><b>${nf(o.t)}</b></td><td class="n">${(o.t/total*100).toFixed(1)}%</td><td class="n">${nf(Math.round(o.t/nm))}</td><td class="n">${nf(Math.round(o.t/o.days.size))}</td></tr>`).join('')+
-    `</tbody><tfoot><tr><td>Kabuuan</td>${months.map(m=>`<td class="n">${nf(mt[m])}</td>`).join('')}<td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(Math.round(avg))}</td><td class="n">${nf(Math.round(avgDay))}</td></tr></tfoot>`;
+    `</tbody><tfoot><tr><td>Total</td>${months.map(m=>`<td class="n">${nf(mt[m])}</td>`).join('')}<td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(Math.round(avg))}</td><td class="n">${nf(Math.round(avgDay))}</td></tr></tfoot>`;
 
   /* per month */
   const maxM=Math.max(1,...Object.values(mt));
-  $('tMonth').innerHTML='<thead><tr><th>Buwan</th><th class="n">JO</th><th class="n">% ng total</th><th class="n">Araw</th><th class="n">Avg/araw</th><th style="width:30%"></th></tr></thead><tbody>'+
+  $('tMonth').innerHTML='<thead><tr><th>Month</th><th class="n">JO</th><th class="n">% of total</th><th class="n">Days</th><th class="n">Avg/day</th><th style="width:30%"></th></tr></thead><tbody>'+
     months.map(m=>`<tr><td>${monthLabel(m)}</td><td class="n">${nf(mt[m])}</td><td class="n">${(mt[m]/total*100).toFixed(1)}%</td><td class="n">${md[m].size}</td><td class="n">${nf(Math.round(mt[m]/md[m].size))}</td><td><div class="bar"><i style="width:${mt[m]/maxM*100}%"></i></div></td></tr>`).join('')+
-    `</tbody><tfoot><tr><td>Kabuuan</td><td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(nd)}</td><td class="n">${nf(Math.round(avgDay))}</td><td>Avg/buwan: ${nf(Math.round(avg))}</td></tr></tfoot>`;
+    `</tbody><tfoot><tr><td>Total</td><td class="n">${nf(total)}</td><td class="n">100%</td><td class="n">${nf(nd)}</td><td class="n">${nf(Math.round(avgDay))}</td><td>Avg/month: ${nf(Math.round(avg))}</td></tr></tfoot>`;
 }
 
 /* ---- load / auto-update ---- */
@@ -176,8 +176,8 @@ async function load(){
     $('dot').classList.remove('err');
   }catch(e){
     $('dot').classList.add('err');
-    $('liveTxt').textContent='Hindi ma-load: '+e.message;
-    if(!rows.length)$('kpis').innerHTML='<div class="msg" style="grid-column:1/-1">Walang data na na-load.</div>';
+    $('liveTxt').textContent='Cannot load: '+e.message;
+    if(!rows.length)$('kpis').innerHTML='<div class="msg" style="grid-column:1/-1">No data loaded.</div>';
   }
 }
 $('btnRefresh').onclick=load;$('btnPrint').onclick=()=>window.print();
